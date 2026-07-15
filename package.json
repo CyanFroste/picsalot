@@ -1,0 +1,44 @@
+{
+  "name": "picsalot",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "vite": "vite",
+    "vite:dev": "vite dev",
+    "vite:build": "tsc && vite build"
+  },
+  "dependencies": {
+    "@heroui/react": "2.8.10",
+    "@tanstack/react-query": "^5.101.2",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.1",
+    "@tauri-apps/plugin-opener": "2.5.4",
+    "@tauri-apps/plugin-store": "2.4.3",
+    "lodash.chunk": "^4.2.0",
+    "lucide-react": "^1.23.0",
+    "motion": "^12.42.2",
+    "react": "^19.2.7",
+    "react-cropper": "^2.3.3",
+    "react-dom": "^19.2.7",
+    "react-hotkeys-hook": "^5.3.3",
+    "react-router": "^8.1.0",
+    "react-virtuoso": "^4.18.10",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@interactjs/types": "^1.10.27",
+    "@tailwindcss/vite": "4.3.2",
+    "@tauri-apps/cli": "^2.11.4",
+    "@types/lodash.chunk": "^4.2.9",
+    "@types/node": "26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "tailwindcss": "^4.3.2",
+    "typescript": "~6.0.3",
+    "vite": "^8.1.3"
+  }
+}

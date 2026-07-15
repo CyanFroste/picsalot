@@ -1,0 +1,10 @@
+import { Channel, invoke } from '@tauri-apps/api/core'
+import type { Picture } from '@/types'
+
+export async function getPictures(path: string) {
+  return await invoke<Picture[]>('get_pictures', { path })
+}
+
+export async function processPictures(items: Picture[], progressChannel: Channel<string>) {
+  return await invoke<string[]>('process_pictures', { items, progressChannel })
+}
