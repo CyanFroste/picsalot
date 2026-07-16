@@ -1,6 +1,9 @@
 import { memo, useEffect, useRef, useState } from 'react'
+import { useStore } from 'zustand'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Channel, convertFileSrc } from '@tauri-apps/api/core'
+import { appCacheDir } from '@tauri-apps/api/path'
+import { openUrl, revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Cropper } from 'react-cropper'
 import { useHotkeys } from 'react-hotkeys-hook'
@@ -19,6 +22,9 @@ import {
   Modal,
   ModalContent,
   Spinner,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   useDisclosure,
   addToast,
   cn,
@@ -31,13 +37,15 @@ import {
   FlipHorizontal2Icon,
   FlipVertical2Icon,
   FolderIcon,
+  HeartIcon,
   PaintbrushVerticalIcon,
   RotateCcwIcon,
+  SettingsIcon,
   TrashIcon,
   XIcon,
 } from 'lucide-react'
 import { getPictures, moveToTrash, processPictures } from '@/commands'
-import { useSelection } from '@/utils'
+import { useSelection, store } from '@/utils'
 import { VirtualList } from '@/components/lists'
 import type { ReactCropperElement } from 'react-cropper'
 import type {
@@ -63,12 +71,14 @@ export function HomeScreen() {
   const queryClient = useQueryClient()
   const cropperRef = useRef<ReactCropperElement>(null)
   const listRef = useRef<ListHandle>(null)
+  const globalStore = useStore(store)
 
   const [directory, setDirectory] = useState<string | null>()
   const [current, setCurrent] = useState<Picture | null>(null)
   const [currentEdit, setCurrentEdit] = useState(current)
   const [edits, setEdits] = useState<Map<string, Picture>>(new Map())
   const [remaining, setRemaining] = useState(0)
+  const [removed, setRemoved] = useState<string[]>([])
 
   const [chunkSize, setChunkSize] = useState(8)
   const [chunked, setChunked] = useState<Picture[][]>([])
@@ -77,8 +87,9 @@ export function HomeScreen() {
   const [batchResizeWidth, setBatchResizeWidth] = useState(512)
   const [batchResizeHeight, setBatchResizeHeight] = useState(512)
 
-  const confirmationModal = useDisclosure()
   const explorerDrawer = useDisclosure()
+  const confirmationModal = useDisclosure()
+  const settingsModal = useDisclosure()
   const selection = useSelection<Picture>((a, b) => a.path === b.path)
 
   const queryPictures = useQuery({
@@ -221,6 +232,7 @@ export function HomeScreen() {
         return filtered
       })
 
+      setRemoved(old => old.concat(vars))
       if (explorerDrawer.isOpen) gotoCurrent()
       selection.clear()
 
@@ -410,6 +422,10 @@ export function HomeScreen() {
       </div>
 
       <div className="flex items-center p-3 shrink-0 border-t border-default-50 gap-3">
+        <Button radius="sm" variant="flat" isIconOnly onPress={settingsModal.onOpen}>
+          <SettingsIcon className="text-lg" />
+        </Button>
+
         <Button
           radius="sm"
           color="warning"
@@ -445,6 +461,35 @@ export function HomeScreen() {
             <Button radius="sm" variant="flat" onPress={onOpenExplorer}>
               <CornerRightUpIcon className="text-lg" /> Show Explorer (Ctrl + b)
             </Button>
+
+            <Popover size="lg" radius="sm" offset={24}>
+              <PopoverTrigger>
+                <Button radius="sm" variant="flat" color="danger" isDisabled={!removed.length}>
+                  <TrashIcon className="text-lg" /> Trash ({removed.length})
+                </Button>
+              </PopoverTrigger>
+
+              <PopoverContent className="bg-background border border-default-50 p-0 overflow-hidden">
+                <div className="p-3 h-200 w-150 flex flex-col overflow-auto border border-default-50">
+                  {removed.map(it => (
+                    <div key={it} className="text-small p-2 text-default-500">
+                      {it}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-3 w-full">
+                  <Button
+                    fullWidth
+                    radius="sm"
+                    variant="flat"
+                    className="shrink-0"
+                    onPress={() => revealItemInDir(`${directory}/${globalStore.appName}-trash`)}>
+                    <FolderIcon className="text-lg" /> Locate Trash
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
           </>
         )}
       </div>
@@ -627,7 +672,7 @@ export function HomeScreen() {
         hideCloseButton
         isOpen={confirmationModal.isOpen}
         onOpenChange={confirmationModal.onOpenChange}>
-        <ModalContent className="bg-background">
+        <ModalContent className="bg-background border border-default-50">
           <div className="p-6 text-2xl font-semibold">Confirm Edit</div>
 
           <div className="px-6">
@@ -645,6 +690,17 @@ export function HomeScreen() {
               <CheckIcon className="text-lg" /> Confirm
             </Button>
           </div>
+        </ModalContent>
+      </Modal>
+
+      <Modal
+        size="2xl"
+        radius="sm"
+        hideCloseButton
+        isOpen={settingsModal.isOpen}
+        onOpenChange={settingsModal.onOpenChange}>
+        <ModalContent className="bg-background border border-default-50">
+          <Settings />
         </ModalContent>
       </Modal>
     </>
@@ -757,5 +813,58 @@ function isChanged(a: Picture, b: Picture) {
     a.cropH !== b.cropH ||
     a.resizeH !== b.resizeH ||
     a.resizeW !== b.resizeW
+  )
+}
+
+function Settings() {
+  const globalStore = useStore(store)
+
+  return (
+    <>
+      <div className="p-6 text-2xl font-semibold border-b border-default-50">Settings</div>
+
+      <div className="p-6 flex items-center gap-3 border-b border-default-50">
+        <Button radius="sm" variant="flat" onPress={async () => revealItemInDir(await appCacheDir())}>
+          <FolderIcon className="text-lg" /> Locate app directory
+        </Button>
+      </div>
+
+      <div className="p-6 flex gap-3">
+        <div className="flex flex-col text-default-500 text-small w-full">
+          <Image removeWrapper src="/icons/logo.png" width={88} height={88} className="mb-6" />
+
+          <div className="text-medium text-foreground mb-0.5">
+            <span className="capitalize">{globalStore.appName}</span> v{globalStore.appVersion}
+          </div>
+
+          <div>© {new Date().getFullYear()} Cyan Froste</div>
+
+          <div className="text-tiny my-3">
+            Licensed under Apache <br /> License 2.0 SPDX-License-Identifier: Apache-2.0
+          </div>
+
+          <button
+            onClick={() => openUrl('https://github.com/CyanFroste/picsalot/blob/master/LICENSE')}
+            className="self-start text-secondary-700 cursor-pointer">
+            View full license
+          </button>
+        </div>
+
+        <div className="flex flex-col gap-3 items-end w-full">
+          <Button radius="sm" variant="flat" onPress={() => openUrl('https://github.com/CyanFroste/picsalot')}>
+            <img height="24" width="24" src="https://cdn.simpleicons.org/github/white" className="size-6" />
+            View source code
+          </Button>
+
+          <Button
+            radius="sm"
+            variant="flat"
+            title="Sponsor CyanFroste"
+            onPress={() => openUrl('https://github.com/sponsors/CyanFroste')}>
+            <HeartIcon className="text-lg text-pink-400" /> Sponsor
+          </Button>
+        </div>
+      </div>
+    </>
   )
 }
