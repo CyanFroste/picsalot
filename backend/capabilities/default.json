@@ -8,6 +8,7 @@
   "permissions": [
     "core:default",
     "opener:default",
+    "dialog:default",
     "core:window:default",
     "core:window:allow-show",
     "core:window:allow-hide",
@@ -20,8 +21,6 @@
     "core:window:allow-start-dragging",
     "core:window:allow-set-resizable",
     "core:window:allow-toggle-maximize",
-    "core:webview:allow-create-webview-window",
-    "store:default",
-    "dialog:default"
+    "core:webview:allow-create-webview-window"
   ]
 }
