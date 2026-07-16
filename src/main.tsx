@@ -7,11 +7,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createBrowserRouter, RouterProvider } from 'react-router'
 import { ToastProvider } from '@heroui/react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { getName, getVersion } from '@tauri-apps/api/app'
 import { HomeScreen } from '@/components/home'
 import { Window } from '@/components/window'
-import { init } from '@/utils'
+import { init, setAppInfo } from '@/utils'
 
 await init()
+setAppInfo(await getName(), await getVersion())
 
 const router = createBrowserRouter([
   {

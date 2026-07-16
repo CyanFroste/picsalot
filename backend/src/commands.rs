@@ -28,3 +28,8 @@ pub async fn move_to_trash(
 ) -> Result<Vec<String>, Error> {
     Ok(state.move_to_trash(paths).await)
 }
+
+#[tauri::command]
+pub async fn ocr(state: StateGuard<State, '_>, path: PathBuf) -> Result<String, Error> {
+    Ok(state.ocr(path)?)
+}

@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { createStore } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { getName, getVersion } from '@tauri-apps/api/app'
 
 type Store = { fontFamily: string; fontSize: number; appName: string; appVersion: string }
 
@@ -11,17 +10,21 @@ function initialState(): Store {
 
 export const store = createStore<Store>()(persist(initialState, { name: 'settings' }))
 
-store.subscribe(init)
-
 function applyTheme({ fontFamily, fontSize }: Store = store.getState()) {
   document.documentElement.style.setProperty('--font-mono', 'JetBrains Mono')
   document.documentElement.style.setProperty('--font-sans', fontFamily)
   document.documentElement.style.setProperty('font-size', `${fontSize}px`)
 }
 
+store.subscribe(init)
+
+// don't set state inside this
 export async function init(state = store.getState()) {
   applyTheme(state)
-  store.setState({ appName: await getName(), appVersion: await getVersion() })
+}
+
+export function setAppInfo(appName: string, appVersion: string) {
+  store.setState({ appName, appVersion })
 }
 
 export type UseSelection<T> = {

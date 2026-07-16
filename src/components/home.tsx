@@ -9,6 +9,9 @@ import { Cropper } from 'react-cropper'
 import { useHotkeys } from 'react-hotkeys-hook'
 import chunk from 'lodash.chunk'
 import {
+  cn,
+  addToast,
+  useDisclosure,
   Button,
   Checkbox,
   Chip,
@@ -25,9 +28,6 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  useDisclosure,
-  addToast,
-  cn,
 } from '@heroui/react'
 import {
   CheckCheckIcon,
@@ -40,11 +40,12 @@ import {
   HeartIcon,
   PaintbrushVerticalIcon,
   RotateCcwIcon,
+  ScanTextIcon,
   SettingsIcon,
   TrashIcon,
   XIcon,
 } from 'lucide-react'
-import { getPictures, moveToTrash, processPictures } from '@/commands'
+import { getPictures, moveToTrash, ocr, processPictures } from '@/commands'
 import { useSelection, store } from '@/utils'
 import { VirtualList } from '@/components/lists'
 import type { ReactCropperElement } from 'react-cropper'
@@ -75,8 +76,11 @@ export function HomeScreen() {
 
   const [directory, setDirectory] = useState<string | null>()
   const [current, setCurrent] = useState<Picture | null>(null)
-  const [currentEdit, setCurrentEdit] = useState(current)
   const [edits, setEdits] = useState<Map<string, Picture>>(new Map())
+  const [ocrResults, setOcrResults] = useState<Map<string, string>>(new Map())
+  const [currentEdit, setCurrentEdit] = useState(current)
+  const [currentOcrResult, setCurrentOcrResult] = useState('')
+
   const [remaining, setRemaining] = useState(0)
   const [removed, setRemoved] = useState<string[]>([])
 
@@ -200,7 +204,9 @@ export function HomeScreen() {
     mutationFn: async (items: Picture[]) =>
       await processPictures(items, new Channel<string>(() => setRemaining(prev => prev - 1))),
     onSuccess: (failed, vars) => {
+      if (directory) revealItemInDir(`${directory}/${globalStore.appName}-output`)
       resetAll()
+
       addToast({
         timeout: 10000,
         title: 'Edits Processed',
@@ -245,6 +251,16 @@ export function HomeScreen() {
     },
   })
 
+  const mutationOcr = useMutation({
+    mutationFn: ocr,
+    onSuccess: (res, path) =>
+      setOcrResults(old => {
+        const newMap = new Map(old)
+        newMap.set(path, res)
+        return newMap
+      }),
+  })
+
   const onProcess = () => {
     const items =
       queryPictures.data?.reduce<Picture[]>((acc, it) => {
@@ -270,6 +286,10 @@ export function HomeScreen() {
   useEffect(() => {
     if (current) setCurrentEdit(edits.get(current.path) ?? null)
   }, [edits, current])
+
+  useEffect(() => {
+    if (current) setCurrentOcrResult(ocrResults.get(current.path) ?? '')
+  }, [ocrResults, current])
 
   useEffect(() => setChunkSize(isSelecting ? 6 : 7), [isSelecting])
 
@@ -320,7 +340,7 @@ export function HomeScreen() {
           )}
         </div>
 
-        <div className="w-150 border-l border-default-50">
+        <div className="w-150 border-l border-default-50 flex flex-col overflow-auto h-full">
           {current && (
             <>
               <div className="p-3 flex flex-col gap-2 border-b border-default-50 break-all">
@@ -406,6 +426,14 @@ export function HomeScreen() {
                 <Button
                   radius="sm"
                   variant="flat"
+                  isLoading={mutationOcr.isPending}
+                  onPress={() => mutationOcr.mutate(current.path)}>
+                  <ScanTextIcon className="text-lg" /> Scan for Text
+                </Button>
+
+                <Button
+                  radius="sm"
+                  variant="flat"
                   color="success"
                   className="ml-auto"
                   isDisabled={!isCurrentChanged}
@@ -416,6 +444,14 @@ export function HomeScreen() {
                   <RotateCcwIcon className="text-lg" /> Reset changes
                 </Button>
               </div>
+
+              {currentOcrResult && (
+                <div className="p-3 flex h-full overflow-hidden border-t border-default-50">
+                  <div className="size-full p-3 rounded-small border border-default-50 overflow-auto font-mono whitespace-pre-wrap select-text">
+                    {currentOcrResult}
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>

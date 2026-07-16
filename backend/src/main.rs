@@ -18,13 +18,15 @@ async fn main() -> Result<()> {
         .invoke_handler(tauri::generate_handler![
             commands::get_pictures,
             commands::process_pictures,
-            commands::move_to_trash
+            commands::move_to_trash,
+            commands::ocr
         ])
         .setup(move |app| {
             app.manage(State::new(
                 app.package_info().name.clone(),
                 app.path().app_cache_dir()?,
                 app.path().app_log_dir()?,
+                app.path().resource_dir()?,
             ));
 
             Ok(())

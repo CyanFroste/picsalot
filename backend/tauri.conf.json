@@ -21,7 +21,10 @@
     ],
     "icon": [
       "icons/icon.ico"
-    ]
+    ],
+    "resources": {
+      "../assets/models/": "models/"
+    }
   },
   "app": {
     "windows": [

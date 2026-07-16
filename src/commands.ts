@@ -12,3 +12,7 @@ export async function processPictures(items: Picture[], progressChannel: Channel
 export async function moveToTrash(paths: string[]) {
   return await invoke<string[]>('move_to_trash', { paths })
 }
+
+export async function ocr(path: string) {
+  return await invoke<string>('ocr', { path })
+}

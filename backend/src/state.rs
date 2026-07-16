@@ -4,6 +4,8 @@ use anyhow::Result;
 use futures::stream;
 use futures::stream::{FuturesUnordered, StreamExt};
 use image::{ImageFormat, ImageReader};
+use ocrs::{ImageSource, OcrEngine, OcrEngineParams};
+use rten::Model;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,17 +15,40 @@ use tokio::sync::Semaphore;
 
 pub struct State {
     thumbnail_manager: Arc<ThumbnailManager>,
+    ocr_engine: Option<Arc<OcrEngine>>,
     app_name: String,
     log_dir: PathBuf,
 }
 
 impl State {
-    pub fn new(app_name: String, cache_dir: PathBuf, log_dir: PathBuf) -> Self {
+    pub fn new(
+        app_name: String,
+        cache_dir: PathBuf,
+        log_dir: PathBuf,
+        resource_dir: PathBuf,
+    ) -> Self {
         let thumbnail_manager = Arc::new(ThumbnailManager::new(cache_dir.join("thumbnails")));
         _ = std::fs::create_dir_all(&log_dir);
 
+        let ocr_engine = (|| -> Result<OcrEngine> {
+            let detection_model_path = resource_dir.join("models/ocr/text-detection.rten");
+            let rec_model_path = resource_dir.join("models/ocr/text-recognition.rten");
+
+            let detection_model = Model::load_file(detection_model_path)?;
+            let recognition_model = Model::load_file(rec_model_path)?;
+
+            Ok(OcrEngine::new(OcrEngineParams {
+                detection_model: Some(detection_model),
+                recognition_model: Some(recognition_model),
+                ..Default::default()
+            })?)
+        })()
+        .ok()
+        .map(Arc::new);
+
         Self {
             thumbnail_manager,
+            ocr_engine,
             app_name,
             log_dir,
         }
@@ -211,5 +236,19 @@ impl State {
         }
 
         failed
+    }
+
+    pub fn ocr(&self, path: PathBuf) -> Result<String> {
+        // https://github.com/robertknight/ocrs/blob/main/ocrs/examples/hello_ocr.rs
+
+        if let Some(engine) = &self.ocr_engine {
+            let img = image::open(&path).map(|image| image.into_rgb8())?;
+            let img_src = ImageSource::from_bytes(img.as_raw(), img.dimensions())?;
+            let ocr_input = engine.prepare_input(img_src)?;
+
+            Ok(engine.get_text(&ocr_input)?)
+        } else {
+            Ok(String::new())
+        }
     }
 }

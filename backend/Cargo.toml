@@ -1,6 +1,6 @@
 [package]
 name = "picsalot"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [build-dependencies]
@@ -11,7 +11,7 @@ tauri = { version = "2.11.5", features = ["protocol-asset", "devtools"] }
 tauri-plugin-store = "2.4.3"
 tauri-plugin-opener = "2.5.4"
 tauri-plugin-dialog = "2.7.1"
-tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.52.4", features = ["macros", "rt-multi-thread"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 anyhow = "1.0.103"
@@ -24,3 +24,5 @@ zip = "8.6.0"
 futures = "0.3.32"
 image = "0.25.10"
 chrono = "0.4.45"
+rten = "0.24.0"
+ocrs = "0.12.2"
