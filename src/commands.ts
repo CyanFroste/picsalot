@@ -8,3 +8,7 @@ export async function getPictures(path: string) {
 export async function processPictures(items: Picture[], progressChannel: Channel<string>) {
   return await invoke<string[]>('process_pictures', { items, progressChannel })
 }
+
+export async function moveToTrash(paths: string[]) {
+  return await invoke<string[]>('move_to_trash', { paths })
+}

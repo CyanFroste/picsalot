@@ -6,6 +6,7 @@ use futures::stream::{FuturesUnordered, StreamExt};
 use image::{ImageFormat, ImageReader};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::Channel;
 use tokio::fs;
 use tokio::sync::Semaphore;
@@ -93,7 +94,7 @@ impl State {
         items: Vec<Picture>,
         progress_channel: Channel<String>,
     ) -> Vec<String> {
-        let limit = Arc::new(Semaphore::new(8));
+        let limit = Arc::new(Semaphore::new(16));
 
         let res: Vec<Option<String>> = stream::iter(items)
             .map(|item| {
@@ -134,7 +135,7 @@ impl State {
                     res
                 }
             })
-            .buffer_unordered(8)
+            .buffer_unordered(16)
             .collect()
             .await;
 
@@ -142,8 +143,70 @@ impl State {
 
         if !failed.is_empty() {
             let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S");
-            let path = self.log_dir.join(format!("{timestamp}.log"));
+            let path = self
+                .log_dir
+                .join(format!("process-pictures-{timestamp}.log"));
+            _ = fs::write(path, failed.join("\n")).await;
+        }
 
+        failed
+    }
+
+    pub async fn move_to_trash(&self, paths: Vec<PathBuf>) -> Vec<String> {
+        let limit = Arc::new(Semaphore::new(16));
+
+        let res: Vec<Option<String>> = stream::iter(paths)
+            .map(|path| {
+                let permit = limit.clone();
+
+                async move {
+                    let _permit = permit.acquire().await.ok()?;
+
+                    let parent = path.parent()?;
+                    let trash_dir = parent.join(format!("{}-trash", self.app_name));
+
+                    fs::create_dir_all(&trash_dir).await.ok()?;
+
+                    let file_name = path.file_name()?;
+                    let mut dest = trash_dir.join(file_name);
+
+                    if dest.exists() {
+                        let timestamp_ms = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .ok()?
+                            .as_millis();
+
+                        dest = trash_dir
+                            .join(format!("{timestamp_ms}_{}", file_name.to_string_lossy()));
+                    }
+
+                    match fs::rename(&path, &dest).await {
+                        Err(err) if err.kind() == std::io::ErrorKind::CrossesDevices => {
+                            if fs::copy(&path, &dest).await.is_err()
+                                || fs::remove_file(&path).await.is_err()
+                            {
+                                Some(format!(
+                                    "[{}] cross-device move failed",
+                                    path.to_string_lossy()
+                                ))
+                            } else {
+                                None
+                            }
+                        }
+                        Err(err) => Some(format!("[{}] {err}", path.to_string_lossy())),
+                        Ok(_) => None,
+                    }
+                }
+            })
+            .buffer_unordered(16)
+            .collect()
+            .await;
+
+        let failed: Vec<String> = res.into_iter().flatten().collect();
+
+        if !failed.is_empty() {
+            let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S");
+            let path = self.log_dir.join(format!("move-to-trash-{timestamp}.log"));
             _ = fs::write(path, failed.join("\n")).await;
         }
 

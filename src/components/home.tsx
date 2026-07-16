@@ -1,7 +1,7 @@
 import { memo, useEffect, useRef, useState } from 'react'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Channel, convertFileSrc } from '@tauri-apps/api/core'
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Cropper } from 'react-cropper'
 import { useHotkeys } from 'react-hotkeys-hook'
 import chunk from 'lodash.chunk'
@@ -32,9 +32,11 @@ import {
   FlipVertical2Icon,
   FolderIcon,
   PaintbrushVerticalIcon,
+  RotateCcwIcon,
+  TrashIcon,
   XIcon,
 } from 'lucide-react'
-import { getPictures, processPictures } from '@/commands'
+import { getPictures, moveToTrash, processPictures } from '@/commands'
 import { useSelection } from '@/utils'
 import { VirtualList } from '@/components/lists'
 import type { ReactCropperElement } from 'react-cropper'
@@ -58,6 +60,7 @@ const ASPECT_RATIOS = [
 ] as const
 
 export function HomeScreen() {
+  const queryClient = useQueryClient()
   const cropperRef = useRef<ReactCropperElement>(null)
   const listRef = useRef<ListHandle>(null)
 
@@ -76,7 +79,7 @@ export function HomeScreen() {
 
   const confirmationModal = useDisclosure()
   const explorerDrawer = useDisclosure()
-  const selection = useSelection<Picture>((a, b) => a === b)
+  const selection = useSelection<Picture>((a, b) => a.path === b.path)
 
   const queryPictures = useQuery({
     enabled: !!directory,
@@ -172,7 +175,7 @@ export function HomeScreen() {
 
   const gotoCurrent = () => {
     setTimeout(() => {
-      const index = chunked.findIndex(items => items.some(it => it === current))
+      const index = chunked.findIndex(items => items.some(it => it.path === current?.path))
       if (index !== -1) listRef.current?.scrollToIndex(index)
     }, 100)
   }
@@ -185,13 +188,47 @@ export function HomeScreen() {
   const mutationProcessPictures = useMutation({
     mutationFn: async (items: Picture[]) =>
       await processPictures(items, new Channel<string>(() => setRemaining(prev => prev - 1))),
-    onSuccess: failed => {
+    onSuccess: (failed, vars) => {
       resetAll()
       addToast({
         timeout: 10000,
         title: 'Edits Processed',
         color: 'success',
-        description: `${totalUnsavedChanges - failed.length} out of ${totalUnsavedChanges} edits processed successfully. ${failed.length} edits failed to process.`,
+        description: `${vars.length - failed.length} out of ${vars.length} edits processed successfully. ${failed.length} failed.`,
+      })
+    },
+  })
+
+  const mutationMoveToTrash = useMutation({
+    mutationFn: moveToTrash,
+    onSuccess: (failed, vars) => {
+      queryClient.setQueryData<Picture[]>(['pictures', directory], old => {
+        if (!old) return old
+
+        const filtered = old.filter(it => !vars.includes(it.path))
+        const isCurrentRemoved = vars.some(it => it === current?.path)
+
+        if (isCurrentRemoved) {
+          const currentIndex = old.findIndex(it => it.path === current?.path)
+          let newIndex = 0
+
+          if (currentIndex < filtered.length - 1) newIndex = currentIndex
+          else if (filtered.length > 0) newIndex = filtered.length - 1
+
+          setCurrent(filtered[newIndex] ?? null)
+        }
+
+        return filtered
+      })
+
+      if (explorerDrawer.isOpen) gotoCurrent()
+      selection.clear()
+
+      addToast({
+        timeout: 2000,
+        title: 'Move to Trash',
+        color: 'success',
+        description: `${vars.length - failed.length} out of ${vars.length} files were moved to Trash successfully. ${failed.length} failed.`,
       })
     },
   })
@@ -231,14 +268,19 @@ export function HomeScreen() {
   useHotkeys('Ctrl + b', onOpenExplorer)
 
   useHotkeys('ArrowLeft', () => {
-    const currentIndex = queryPictures.data?.findIndex(item => item === current) ?? 0
-    if (currentIndex > 0) setCurrent(queryPictures.data?.[currentIndex - 1] ?? null)
+    if (!queryPictures.data?.length) return
+    const currentIndex = queryPictures.data.findIndex(item => item.path === current?.path)
+    if (currentIndex > 0) setCurrent(queryPictures.data[currentIndex - 1])
   })
 
   useHotkeys('ArrowRight', () => {
-    const currentIndex = queryPictures.data?.findIndex(item => item === current) ?? 0
-    const total = queryPictures.data?.length
-    if (total && currentIndex < total - 1) setCurrent(queryPictures.data?.[currentIndex + 1] ?? null)
+    if (!queryPictures.data?.length) return
+    const currentIndex = queryPictures.data.findIndex(item => item.path === current?.path)
+    if (currentIndex < queryPictures.data.length - 1) setCurrent(queryPictures.data[currentIndex + 1])
+  })
+
+  useHotkeys('Delete', () => {
+    if (current) mutationMoveToTrash.mutate([current.path])
   })
 
   return (
@@ -270,19 +312,30 @@ export function HomeScreen() {
           {current && (
             <>
               <div className="p-3 flex flex-col gap-2 border-b border-default-50 break-all">
-                <div className="text-default-500 text-small font-mono">{current.path}</div>
+                <div className="text-default-500 text-small font-mono pt-3">{current.path}</div>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 pb-3">
                   {current.w}
                   <XIcon className="text-default-500" />
                   {current.h}
                 </div>
 
-                {isCurrentChanged && (
-                  <Chip variant="flat" size="sm" radius="sm" className="ml-auto" color="warning">
-                    Unsaved changes
-                  </Chip>
-                )}
+                <div className="flex items-center">
+                  <Button
+                    radius="sm"
+                    variant="flat"
+                    color="danger"
+                    isLoading={mutationMoveToTrash.isPending}
+                    onPress={() => mutationMoveToTrash.mutate([current.path])}>
+                    <TrashIcon className="text-lg" /> Move to Trash (Del)
+                  </Button>
+
+                  {isCurrentChanged && (
+                    <Chip variant="flat" size="sm" radius="sm" className="ml-auto" color="warning">
+                      Unsaved changes
+                    </Chip>
+                  )}
+                </div>
               </div>
 
               <div className="p-3 flex gap-3 items-center border-b border-default-50">
@@ -348,7 +401,7 @@ export function HomeScreen() {
                     onEdit([{ ...current, aspectRatio: 0 }])
                     setCropperData(current)
                   }}>
-                  Reset changes
+                  <RotateCcwIcon className="text-lg" /> Reset changes
                 </Button>
               </div>
             </>
@@ -468,7 +521,7 @@ export function HomeScreen() {
                           isSelecting={isSelecting}
                           onToggleSelect={selection.toggle}
                           isSelected={items.map(it => selection.isSelected(it))}
-                          isCurrent={item => item === current}
+                          isCurrent={item => item.path === current?.path}
                           isChanged={item => {
                             const edit = edits.get(item.path)
                             return edit ? isChanged(item, edit) : false
@@ -481,6 +534,19 @@ export function HomeScreen() {
 
                 {isSelecting && (
                   <div className="w-150 border-l border-default-50 flex flex-col">
+                    <div className="p-3 flex gap-3 items-center border-b border-default-50">
+                      <Button
+                        radius="sm"
+                        variant="flat"
+                        color="danger"
+                        className="ml-auto"
+                        isDisabled={!selection.values.length}
+                        isLoading={mutationMoveToTrash.isPending}
+                        onPress={() => mutationMoveToTrash.mutate(selection.values.map(it => it.path))}>
+                        <TrashIcon className="text-lg" /> Move {selection.values.length} selected to Trash
+                      </Button>
+                    </div>
+
                     <div className="p-3 flex gap-3 items-center border-b border-default-50">
                       <Input
                         type="number"
@@ -515,6 +581,7 @@ export function HomeScreen() {
                           )
                           selection.clear()
                         }}>
+                        <PaintbrushVerticalIcon className="text-lg" />
                         Apply to {selection.values.length} selected
                       </Button>
 
@@ -527,7 +594,7 @@ export function HomeScreen() {
                           onEdit(selection.values.map(it => ({ path: it.path, resizeW: it.w, resizeH: it.h })))
                           selection.clear()
                         }}>
-                        Reset selected
+                        <RotateCcwIcon className="text-lg" /> Reset selected
                       </Button>
                     </div>
                   </div>
@@ -626,8 +693,9 @@ export const ListItem = memo(
                   isBlurred
                   radius="none"
                   shadow="none"
-                  src={convertFileSrc(item.thumbnail)}
+                  width="100%"
                   className="h-60 object-contain"
+                  src={convertFileSrc(item.thumbnail)}
                   classNames={{ wrapper: 'overflow-hidden' }}
                 />
               )}
@@ -662,7 +730,7 @@ export const ListItem = memo(
     prev.data.length === next.data.length &&
     prev.isSelecting === next.isSelecting &&
     prev.isSelected.length === next.isSelected.length &&
-    !!prev.data.every((it, i) => it === next.data[i]) &&
+    !!prev.data.every((it, i) => it.path === next.data[i].path) &&
     !!prev.isSelected.every((it, i) => it === next.isSelected[i]),
 )
 

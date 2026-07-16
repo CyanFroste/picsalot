@@ -20,3 +20,11 @@ pub async fn process_pictures(
 ) -> Result<Vec<String>, Error> {
     Ok(state.process_pictures(items, progress_channel).await)
 }
+
+#[tauri::command]
+pub async fn move_to_trash(
+    state: StateGuard<State, '_>,
+    paths: Vec<PathBuf>,
+) -> Result<Vec<String>, Error> {
+    Ok(state.move_to_trash(paths).await)
+}

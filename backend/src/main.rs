@@ -17,7 +17,8 @@ async fn main() -> Result<()> {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::get_pictures,
-            commands::process_pictures
+            commands::process_pictures,
+            commands::move_to_trash
         ])
         .setup(move |app| {
             app.manage(State::new(

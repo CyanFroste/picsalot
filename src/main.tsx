@@ -22,9 +22,7 @@ const router = createBrowserRouter([
 ])
 
 const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false, staleTime: 2 * 60 * 1000, refetchOnMount: 'always' },
-  },
+  defaultOptions: { queries: { retry: false, staleTime: Infinity } },
 })
 
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
